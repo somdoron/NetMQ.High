@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="us-ascii" ?>
+<class
+    name = "Monitor Codec"
+    signature = "0"
+    title = "Monitor protocol"
+    script = "zproto_codec_cs"
+    source_dir = "./../Monitor"
+    test_dir ="./../../NetMQ.High.Tests"
+    namespace ="NetMQ.High.ClientServer"
+    test_namespace="NetMQ.High.Tests"
+    modifier="internal"
+    >
+
+  <message name="REQUEST_SENT">    
+    <field name="request_id" type="number" size="8">Identifier of the request</field>
+    <field name="service" type="longstr">Service to send the request to</field>
+    <field name="subject" type="longstr">Subject of the message</field>    
+  </message>
+
+  <message name="REQUEST_RECEIVED">
+    <field name="client_id" type="number" size="4">Identifier of the client</field>
+    <field name="request_id" type="number" size="8">Identifier of the request</field>
+    <field name="service" type="longstr">Service to send the request to</field>
+    <field name="subject" type="longstr">Subject of the message</field>
+  </message>
+
+  <message name="ONEWAY_SENT">
+    <field name="request_id" type="number" size="8">Identifier of the request</field>
+    <field name="service" type="longstr">Service to send the request to</field>
+    <field name="subject" type="longstr">Subject of the message</field>
+  </message>
+
+  <message name="ONEWAY_RECEIVED">
+    <field name="client_id" type="number" size="4">Identifier of the client</field>
+    <field name="request_id" type="number" size="8">Identifier of the request</field>
+    <field name="service" type="longstr">Service to send the request to</field>
+    <field name="subject" type="longstr">Subject of the message</field>
+  </message>
+
+  <message name="RESPONSE_SENT">
+    <field name="request_id" type="number" size="8">Identifier of the request</field>    
+    <field name="subject" type="longstr">Subject of the message</field>
+  </message>
+
+  <message name="RESPONSE_RECEIVED">
+    <field name="request_id" type="number" size="8">Identifier of the request</field>
+    <field name="subject" type="longstr">Subject of the message</field>
+  </message>
+</class>
