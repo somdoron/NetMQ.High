@@ -11,27 +11,16 @@
     modifier="internal"
     >
 
-  <message name="REQUEST">
-    <field name="request_id" type="number" size="8">Identifier of the request</field>
+  <message name="MESSAGE">
+    <field name="message_id" type="number" size="8">Identifier of the request</field>
+    <field name="related_message_id" type="number" size="8">Idenitifer of the related message id, used when replying to a message.</field>    
     <field name="service" type="longstr">Service to send the request to</field>
     <field name="subject" type="longstr">Subject of the message</field>
     <field name="body" type="chunk">Body of the message</field>
-  </message>
+    <field name="one_way" type="number" size="1">Is the message one way?</field>
+  </message>  
 
-  <message name="RESPONSE">
-    <field name="request_id" type="number" size="8">Identifier of the request</field>    
-    <field name="subject" type="longstr">Subject of the message</field>
-    <field name="body" type="chunk">Body of the message</field>
-  </message>
-
-  <message name="ONEWAY">
-    <field name="request_id" type="number" size="8">Identifier of the request</field>    
-    <field name="service" type="longstr">Service to send the request to</field>
-    <field name="subject" type="longstr">Subject of the message</field>
-    <field name="body" type="chunk">Body of the message</field>
-  </message>
-
-  <message name="RESPONSE_ERROR">
-    <field name="request_id" type="number" size="8">Identifier of the request</field>
+  <message name="ERROR">
+    <field name="related_message_id" type="number" size="8">Identifier of the message causing the error</field>
   </message>
 </class>

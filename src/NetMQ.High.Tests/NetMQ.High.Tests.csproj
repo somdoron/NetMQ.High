@@ -55,8 +55,6 @@
     <Compile Include="ClientServerTests.cs" />
     <Compile Include="CodecTests.cs" />
     <Compile Include="JsonSerializerTests.cs" />
-    <Compile Include="MonitorCodecTests.cs" />
-    <Compile Include="MonitorTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

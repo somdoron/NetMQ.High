@@ -3,16 +3,13 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
-using NetMQ.High.Monitor;
 using NetMQ.High.Serializers;
 using NetMQ.Sockets;
 
 namespace NetMQ.High.ClientServer
 {
     public class Client : IDisposable
-    {
-        private const string GetMonitorAddressCommand = "MONITOR_ADDRESS";
-
+    {        
         class Actor : IShimHandler
         {
             private readonly ISerializer m_serializer;
@@ -21,12 +18,11 @@ namespace NetMQ.High.ClientServer
 
             private DealerSocket m_clientSocket;
             private PairSocket m_shim;
-            private MonitorPublisher m_monitorPublisher;            
             private Poller m_poller;
 
             private Codec m_codec;
 
-            private UInt64 m_requestId;
+            private UInt64 m_nextMessageId;
 
             private Dictionary<UInt64, OutgoingMessage> m_pendingRequests; 
 
@@ -36,7 +32,7 @@ namespace NetMQ.High.ClientServer
                 m_outgoingQueue = outgoingQueue;
                 m_address = address;
                 m_codec = new Codec();
-                m_requestId = 0;
+                m_nextMessageId = 0;
                 m_pendingRequests = new Dictionary<ulong, OutgoingMessage>();
             }
 
@@ -54,15 +50,12 @@ namespace NetMQ.High.ClientServer
                 m_poller.AddSocket(m_clientSocket);
 
                 m_outgoingQueue.ReceiveReady += OnOutgoingQueueReady;
-                m_poller.AddSocket(m_outgoingQueue);
-
-                m_monitorPublisher = new MonitorPublisher();
+                m_poller.AddSocket(m_outgoingQueue);                
              
                 m_shim.SignalOK();
                 m_poller.PollTillCancelled();
 
-                m_clientSocket.Dispose();             
-                m_monitorPublisher.Dispose();
+                m_clientSocket.Dispose();                            
             }
 
             private void OnShimReady(object sender, NetMQSocketEventArgs e)
@@ -70,9 +63,7 @@ namespace NetMQ.High.ClientServer
                 string command = m_shim.ReceiveFrameString();
 
                 if (command == NetMQActor.EndShimMessage)
-                    m_poller.Cancel();                
-                else if (command == GetMonitorAddressCommand)
-                    m_shim.SendFrame(m_monitorPublisher.Address);
+                    m_poller.Cancel();                                
             }
 
             private void OnOutgoingQueueReady(object sender, NetMQQueueEventArgs<OutgoingMessage> e)
@@ -84,62 +75,49 @@ namespace NetMQ.High.ClientServer
                 byte[] body = new byte[bodySegment.Count];
                 Buffer.BlockCopy(bodySegment.Array, bodySegment.Offset, body, 0, bodySegment.Count);
 
-                UInt64 requestId = m_requestId++;
+                UInt64 messageId = m_nextMessageId++;
+
+                string subject = m_serializer.GetObjectSubject(outgoingMessage.Message);
+
+                m_codec.Id = Codec.MessageId.Message;
+                m_codec.Message.MessageId = messageId;
+                m_codec.Message.Service = outgoingMessage.Service;
+                m_codec.Message.Subject = subject;
+                m_codec.Message.Body = body;
 
                 // one way message
                 if (outgoingMessage.Oneway)
                 {
-                    string subject = m_serializer.GetObjectSubject(outgoingMessage.Message);
-                    
-                    m_codec.Id = Codec.MessageId.Oneway;
-                    m_codec.Oneway.RequestId = requestId;
-                    m_codec.Oneway.Service = outgoingMessage.Service;
-                    m_codec.Oneway.Subject = subject;
-                    m_codec.Oneway.Body = body;
-
-                    m_codec.Send(m_clientSocket);
-                    m_monitorPublisher.SendOnewaySent(requestId, outgoingMessage.Service, subject);
+                    m_codec.Message.OneWay = 1;                                      
                 }
                 else
-                {                    
-                    string subject = m_serializer.GetObjectSubject(outgoingMessage.Message);
-                    
-                    m_codec.Id = Codec.MessageId.Request;
-                    m_codec.Request.RequestId = requestId;
-                    m_codec.Request.Service = outgoingMessage.Service;
-                    m_codec.Request.Subject = subject;
-                    m_codec.Request.Body = body;                    
-
+                {
+                    m_codec.Message.OneWay = 0;
+                                                                                        
                     // add to pending requests dictionary
                     // TODO: we might want to create a pending message structure that will not hold reference to the message (can lead to GC second generation)
-                    m_pendingRequests.Add(requestId, outgoingMessage);
+                    m_pendingRequests.Add(messageId, outgoingMessage);                   
+                }
 
-                    m_codec.Send(m_clientSocket);
-                    m_monitorPublisher.SendRequestSent(requestId, outgoingMessage.Service, subject);
-                }                
+                m_codec.Send(m_clientSocket);
             }
 
             private void OnClientReady(object sender, NetMQSocketEventArgs e)
             {
                 m_codec.Receive(m_clientSocket);
-
-                // Currently server only send response
-                Debug.Assert(m_codec.Id == Codec.MessageId.Response || m_codec.Id == Codec.MessageId.ResponseError);
-
+                
                 OutgoingMessage outgoingMessage;
 
-                UInt64 requestId = m_codec.Id == Codec.MessageId.Response
-                    ? m_codec.Response.RequestId
-                    : m_codec.ResponseError.RequestId;
+                UInt64 relatedMessageId = m_codec.Id == Codec.MessageId.Message
+                    ? m_codec.Message.RelatedMessageId
+                    : m_codec.Error.RelatedMessageId;
 
-                if (m_pendingRequests.TryGetValue(requestId, out outgoingMessage))
+                if (m_pendingRequests.TryGetValue(relatedMessageId, out outgoingMessage))
                 {                    
-                    if (m_codec.Id == Codec.MessageId.Response)
-                    {
-                        m_monitorPublisher.SendResponseReceived(requestId, m_codec.Response.Subject);
-
-                        var body = m_serializer.Deserialize(m_codec.Response.Subject, m_codec.Response.Body, 0,
-                            m_codec.Response.Body.Length);
+                    if (m_codec.Id == Codec.MessageId.Message)
+                    {                        
+                        var body = m_serializer.Deserialize(m_codec.Message.Subject, m_codec.Message.Body, 0,
+                            m_codec.Message.Body.Length);
                         outgoingMessage.SetResult(body);
                     }
                     else
@@ -177,13 +155,7 @@ namespace NetMQ.High.ClientServer
         {
             
         }
-
-        internal string GetMonitorAddress()
-        {
-            m_actor.SendFrame(GetMonitorAddressCommand);
-            return m_actor.ReceiveFrameString();
-        }
-
+        
         /// <summary>
         /// Send a request to the server and return the reply
         /// </summary>

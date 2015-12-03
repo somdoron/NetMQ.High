@@ -2,7 +2,6 @@
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using NetMQ.High.Monitor;
 using NetMQ.High.Serializers;
 using NetMQ.Sockets;
 
@@ -10,8 +9,7 @@ namespace NetMQ.High.ClientServer
 {
     public class Server : IDisposable
     {
-        private const string BindCommand = "BIND";
-        private const string GetMonitorAddressCommand = "MONITOR_ADDRESS";
+        private const string BindCommand = "BIND";        
 
         class Actor : IShimHandler
         {
@@ -22,7 +20,6 @@ namespace NetMQ.High.ClientServer
             private RouterSocket m_serverSocket;
             private PairSocket m_shim;
             private NetMQScheduler m_scheduler;
-            private MonitorPublisher m_monitorPublisher;
             private Codec m_codec;
 
             public Actor(ISerializer serializer, IServerHandler handler)
@@ -47,8 +44,6 @@ namespace NetMQ.High.ClientServer
                 // used to make sure continuation of tasks run on this thread
                 m_scheduler = new NetMQScheduler(Global.Context, m_poller);
 
-                m_monitorPublisher = new MonitorPublisher();
-
                 m_shim.SignalOK();
                 m_poller.PollTillCancelled();
                 m_scheduler.Dispose();
@@ -67,10 +62,7 @@ namespace NetMQ.High.ClientServer
                     case BindCommand:
                         string addresss = m_shim.ReceiveFrameString();
                         m_serverSocket.Bind(addresss);
-                        break;
-                    case GetMonitorAddressCommand:
-                        m_shim.SendFrame(m_monitorPublisher.Address);
-                        break;
+                        break;                    
                 }
             }
 
@@ -79,54 +71,50 @@ namespace NetMQ.High.ClientServer
                 m_codec.Receive(m_serverSocket);
 
                 // TODO: this should be manage with a dictionary, this is temporary hack
-                UInt32 clientId = BitConverter.ToUInt32(m_codec.RoutingId, 1);
+                UInt32 connectionId = BitConverter.ToUInt32(m_codec.RoutingId, 1);
 
-                Debug.Assert(m_codec.Id == Codec.MessageId.Oneway || m_codec.Id == Codec.MessageId.Request);
+                bool oneway = m_codec.Message.OneWay == 1;
 
-                if (m_codec.Id == Codec.MessageId.Oneway)
-                {
-                    m_monitorPublisher.SendOnewayReceived(clientId, m_codec.Oneway.RequestId, m_codec.Oneway.Service, m_codec.Oneway.Subject);
+                object message = m_serializer.Deserialize(m_codec.Message.Subject, m_codec.Message.Body, 0, m_codec.Message.Body.Length);
 
-                    object message = m_serializer.Deserialize(m_codec.Oneway.Subject, m_codec.Oneway.Body, 0,
-                        m_codec.Oneway.Body.Length);
-
-                    string service = m_codec.Request.Service;
-                    UInt64 requestId = m_codec.Request.RequestId;
-
+                ulong messageId = m_codec.Message.MessageId;
+                string service = m_codec.Message.Service;
+                string subject = m_codec.Message.Subject;
+                
+                if (oneway)
+                {                    
                     // TODO: this should run on user provided task scheduler
-                    ThreadPool.QueueUserWorkItem(s => m_handler.HandleOneWay(clientId, requestId, service, message));
+                    ThreadPool.QueueUserWorkItem(s => m_handler.HandleOneWay(messageId, connectionId, service, subject, message));
                 }
-                else if (m_codec.Id == Codec.MessageId.Request)
-                {
-                    m_monitorPublisher.SendRequestReceived(clientId, m_codec.Request.RequestId, m_codec.Request.Service, m_codec.Request.Subject);
-
-                    object message = m_serializer.Deserialize(m_codec.Request.Subject, m_codec.Request.Body, 0,
-                        m_codec.Request.Body.Length);
-
-                    // we need to save the fields because it might changed until the operation is successful/run
-                    byte[] routingId = m_codec.RoutingId;
-                    string service = m_codec.Request.Service;
-                    UInt64 requestId = m_codec.Request.RequestId;
-
+                else
+                {                    
                     // TODO: this should run on user provided task scheduler
                     ThreadPool.QueueUserWorkItem(s =>
                     {
                         // we set the task scheduler so we now run on the actor thread to complete the request async
-                        m_handler.HandleRequestAsync(clientId, requestId, service, message).
-                            ContinueWith(t => CompleteRequestAsync(t, requestId, routingId), m_scheduler);
+                        m_handler.HandleRequestAsync(messageId, connectionId, service, subject, message).
+                            ContinueWith(t => CompleteRequestAsync(t, messageId, connectionId), m_scheduler);
                     });
                 }
             }
 
-            private void CompleteRequestAsync(Task<Object> t, UInt64 requestId, byte[] routingId)
+            private byte[] ConvertConnectionIdToRoutingId(uint connectionId)
+            {
+                byte[] routingId = new byte[5];
+                Buffer.BlockCopy(BitConverter.GetBytes(connectionId), 0, routingId, 1, 4);
+
+                return routingId;
+            }
+
+            private void CompleteRequestAsync(Task<Object> t, ulong originMessageId, uint originConnectionId)
             {
                 if (t.IsFaulted)
                 {
                     // Exception, let just send an error
-                    m_codec.Id = Codec.MessageId.ResponseError;
-                    m_codec.ResponseError.RequestId = requestId;
+                    m_codec.Id = Codec.MessageId.Message;
+                    m_codec.Error.RelatedMessageId = originMessageId;
 
-                    m_codec.RoutingId = routingId;
+                    m_codec.RoutingId = ConvertConnectionIdToRoutingId(originConnectionId);
                     m_codec.Send(m_serverSocket);
                 }
                 else
@@ -140,16 +128,14 @@ namespace NetMQ.High.ClientServer
                     byte[] body = new byte[bodySegment.Count];
                     Buffer.BlockCopy(bodySegment.Array, bodySegment.Offset, body, 0, bodySegment.Count);
 
-                    m_codec.Id = Codec.MessageId.Response;
-                    m_codec.Response.Subject = subject;
-                    m_codec.Response.Body = body;
-                    m_codec.Response.RequestId = requestId;
+                    m_codec.Id = Codec.MessageId.Message;
+                    m_codec.Message.Subject = subject;
+                    m_codec.Message.Body = body;
+                    m_codec.Message.RelatedMessageId = originMessageId;
 
-                    m_codec.RoutingId = routingId;
+                    m_codec.RoutingId = ConvertConnectionIdToRoutingId(originConnectionId);
                     m_codec.Send(m_serverSocket);
-
-                    m_monitorPublisher.SendResponseSent(requestId, subject);
-                }                                               
+                }
             }
         }
 
@@ -185,16 +171,7 @@ namespace NetMQ.High.ClientServer
                 m_actor.SendMoreFrame(BindCommand).SendFrame(address);
             }
         }
-
-        internal string GetMonitorAddress()
-        {
-            lock (m_actor)
-            {
-                m_actor.SendFrame(GetMonitorAddressCommand);
-                return m_actor.ReceiveFrameString();
-            }            
-        }
-
+        
         public void Dispose()
         {
             lock (m_actor)

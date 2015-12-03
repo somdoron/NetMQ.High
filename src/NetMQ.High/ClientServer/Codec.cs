@@ -9,7 +9,7 @@
 //    statements. DO NOT MAKE ANY CHANGES YOU WISH TO KEEP. The correct places
 //    for commits are:
 //
-//     * The XML model used for this code generation: C:\Users\somdo\Documents\Visual Studio 2015\Projects\NetMQ.High\zproto\ClientServer.xml, or
+//     * The XML model used for this code generation: C:\git\NetMQ.High\src\NetMQ.High\zproto\ClientServer.xml, or
 //     * The code generation script that built this file: zproto_codec_cs
 //    ************************************************************************
 //    =========================================================================
@@ -37,24 +37,30 @@ namespace NetMQ.High.ClientServer
 
 		public enum MessageId
 		{
-			Request = 1,
-			Response = 2,
-			Oneway = 3,
-			ResponseError = 4,
+			Message = 1,
+			Error = 2,
 		}
 		
-		#region Request
+		#region Message
 
-		public class RequestMessage
+		public class MessageMessage
 		{
-			public RequestMessage()
+			public MessageMessage()
 			{
 			}			
 
 			/// <summary>
-			/// Get/Set the RequestId field
+			/// Get/Set the MessageId field
 			/// </summary>
-			public UInt64 RequestId
+			public UInt64 MessageId
+			{
+				get;set;
+			}
+
+			/// <summary>
+			/// Get/Set the RelatedMessageId field
+			/// </summary>
+			public UInt64 RelatedMessageId
 			{
 				get;set;
 			}
@@ -83,12 +89,23 @@ namespace NetMQ.High.ClientServer
 				get;set;
 			}
 
+			/// <summary>
+			/// Get/Set the OneWay field
+			/// </summary>
+			public byte OneWay
+			{
+				get;set;
+			}
+
 
 			internal int GetFrameSize()
 			{
 				int frameSize = 0;
 
-				//  RequestId
+				//  MessageId
+				frameSize += 8;          
+
+				//  RelatedMessageId
 				frameSize += 8;          
 
 				//  Service
@@ -106,13 +123,19 @@ namespace NetMQ.High.ClientServer
 				if (Body != null)
 					frameSize += Body.Length;
 
+				//  OneWay
+				frameSize += 1;          
+
 				return frameSize;
 			}		
 
 			internal void Write(Codec m)
 			{
-				// RequestId
-				m.PutNumber8(RequestId);
+				// MessageId
+				m.PutNumber8(MessageId);
+
+				// RelatedMessageId
+				m.PutNumber8(RelatedMessageId);
 
 				// Service
 				if (Service != null) 						
@@ -135,6 +158,9 @@ namespace NetMQ.High.ClientServer
 				else
 					m.PutNumber4(0);    //  Empty chunk
 
+				// OneWay
+				m.PutNumber1(OneWay);
+
 			}
 
 			internal void Read(Codec m)
@@ -144,8 +170,11 @@ namespace NetMQ.High.ClientServer
 				int chunkSize;
 				byte[] guidBytes;
 
-				// RequestId
-				RequestId = m.GetNumber8();
+				// MessageId
+				MessageId = m.GetNumber8();
+
+				// RelatedMessageId
+				RelatedMessageId = m.GetNumber8();
 
 				// Service
 				Service = m.GetLongString();            
@@ -163,39 +192,26 @@ namespace NetMQ.High.ClientServer
 				Body = new byte[chunkSize];
 				m.GetOctets(Body, chunkSize);                   						
 
+				// OneWay
+				OneWay = m.GetNumber1();
+
 			}
 		}
 
 		#endregion
 
-		#region Response
+		#region Error
 
-		public class ResponseMessage
+		public class ErrorMessage
 		{
-			public ResponseMessage()
+			public ErrorMessage()
 			{
 			}			
 
 			/// <summary>
-			/// Get/Set the RequestId field
+			/// Get/Set the RelatedMessageId field
 			/// </summary>
-			public UInt64 RequestId
-			{
-				get;set;
-			}
-
-			/// <summary>
-			/// Get/Set the Subject field
-			/// </summary>
-			public string Subject
-			{
-				get;set;
-			}
-
-			/// <summary>
-			/// Get/Set the Body field
-			/// </summary>
-			public byte[] Body 
+			public UInt64 RelatedMessageId
 			{
 				get;set;
 			}
@@ -205,41 +221,16 @@ namespace NetMQ.High.ClientServer
 			{
 				int frameSize = 0;
 
-				//  RequestId
+				//  RelatedMessageId
 				frameSize += 8;          
-
-				//  Subject
-				frameSize += 4;
-				if (Subject != null)
-					frameSize += Subject.Length;
-
-				//  Body
-				frameSize += 4;            //  Size is 4 octets
-				if (Body != null)
-					frameSize += Body.Length;
 
 				return frameSize;
 			}		
 
 			internal void Write(Codec m)
 			{
-				// RequestId
-				m.PutNumber8(RequestId);
-
-				// Subject
-				if (Subject != null) 						
-					m.PutLongString(Subject);                						
-				else
-					m.PutNumber4(0);    //  Empty string
-
-				// Body
-				if (Body != null)
-				{
-					m.PutNumber4((UInt32)Body.Length);
-					m.PutOctets(Body, Body.Length);				
-				}
-				else
-					m.PutNumber4(0);    //  Empty chunk
+				// RelatedMessageId
+				m.PutNumber8(RelatedMessageId);
 
 			}
 
@@ -250,195 +241,8 @@ namespace NetMQ.High.ClientServer
 				int chunkSize;
 				byte[] guidBytes;
 
-				// RequestId
-				RequestId = m.GetNumber8();
-
-				// Subject
-				Subject = m.GetLongString();            
-
-				// Body
-				chunkSize = (int)m.GetNumber4();                
-				if (m.m_offset + chunkSize > m.m_buffer.Length) 
-				{
-					throw new MessageException("Body is missing data");
-				}
-                
-				Body = new byte[chunkSize];
-				m.GetOctets(Body, chunkSize);                   						
-
-			}
-		}
-
-		#endregion
-
-		#region Oneway
-
-		public class OnewayMessage
-		{
-			public OnewayMessage()
-			{
-			}			
-
-			/// <summary>
-			/// Get/Set the RequestId field
-			/// </summary>
-			public UInt64 RequestId
-			{
-				get;set;
-			}
-
-			/// <summary>
-			/// Get/Set the Service field
-			/// </summary>
-			public string Service
-			{
-				get;set;
-			}
-
-			/// <summary>
-			/// Get/Set the Subject field
-			/// </summary>
-			public string Subject
-			{
-				get;set;
-			}
-
-			/// <summary>
-			/// Get/Set the Body field
-			/// </summary>
-			public byte[] Body 
-			{
-				get;set;
-			}
-
-
-			internal int GetFrameSize()
-			{
-				int frameSize = 0;
-
-				//  RequestId
-				frameSize += 8;          
-
-				//  Service
-				frameSize += 4;
-				if (Service != null)
-					frameSize += Service.Length;
-
-				//  Subject
-				frameSize += 4;
-				if (Subject != null)
-					frameSize += Subject.Length;
-
-				//  Body
-				frameSize += 4;            //  Size is 4 octets
-				if (Body != null)
-					frameSize += Body.Length;
-
-				return frameSize;
-			}		
-
-			internal void Write(Codec m)
-			{
-				// RequestId
-				m.PutNumber8(RequestId);
-
-				// Service
-				if (Service != null) 						
-					m.PutLongString(Service);                						
-				else
-					m.PutNumber4(0);    //  Empty string
-
-				// Subject
-				if (Subject != null) 						
-					m.PutLongString(Subject);                						
-				else
-					m.PutNumber4(0);    //  Empty string
-
-				// Body
-				if (Body != null)
-				{
-					m.PutNumber4((UInt32)Body.Length);
-					m.PutOctets(Body, Body.Length);				
-				}
-				else
-					m.PutNumber4(0);    //  Empty chunk
-
-			}
-
-			internal void Read(Codec m)
-			{
-				int listSize;
-				int hashSize;
-				int chunkSize;
-				byte[] guidBytes;
-
-				// RequestId
-				RequestId = m.GetNumber8();
-
-				// Service
-				Service = m.GetLongString();            
-
-				// Subject
-				Subject = m.GetLongString();            
-
-				// Body
-				chunkSize = (int)m.GetNumber4();                
-				if (m.m_offset + chunkSize > m.m_buffer.Length) 
-				{
-					throw new MessageException("Body is missing data");
-				}
-                
-				Body = new byte[chunkSize];
-				m.GetOctets(Body, chunkSize);                   						
-
-			}
-		}
-
-		#endregion
-
-		#region ResponseError
-
-		public class ResponseErrorMessage
-		{
-			public ResponseErrorMessage()
-			{
-			}			
-
-			/// <summary>
-			/// Get/Set the RequestId field
-			/// </summary>
-			public UInt64 RequestId
-			{
-				get;set;
-			}
-
-
-			internal int GetFrameSize()
-			{
-				int frameSize = 0;
-
-				//  RequestId
-				frameSize += 8;          
-
-				return frameSize;
-			}		
-
-			internal void Write(Codec m)
-			{
-				// RequestId
-				m.PutNumber8(RequestId);
-
-			}
-
-			internal void Read(Codec m)
-			{
-				int listSize;
-				int hashSize;
-				int chunkSize;
-				byte[] guidBytes;
-
-				// RequestId
-				RequestId = m.GetNumber8();
+				// RelatedMessageId
+				RelatedMessageId = m.GetNumber8();
 
 			}
 		}
@@ -455,19 +259,13 @@ namespace NetMQ.High.ClientServer
 		/// </summary>
 		public Codec()
 		{    
-			Request = new RequestMessage();
-			Response = new ResponseMessage();
-			Oneway = new OnewayMessage();
-			ResponseError = new ResponseErrorMessage();
+			Message = new MessageMessage();
+			Error = new ErrorMessage();
 		}			
 
-		public RequestMessage Request {get;private set;}
+		public MessageMessage Message {get;private set;}
 
-		public ResponseMessage Response {get;private set;}
-
-		public OnewayMessage Oneway {get;private set;}
-
-		public ResponseErrorMessage ResponseError {get;private set;}
+		public ErrorMessage Error {get;private set;}
 
 	
 		/// <summary>
@@ -510,14 +308,10 @@ namespace NetMQ.High.ClientServer
 			{	    
 				switch (Id) 
 				{
-					case MessageId.Request:
-						return "Request";										
-					case MessageId.Response:
-						return "Response";										
-					case MessageId.Oneway:
-						return "Oneway";										
-					case MessageId.ResponseError:
-						return "ResponseError";										
+					case MessageId.Message:
+						return "Message";										
+					case MessageId.Error:
+						return "Error";										
 				}
 				return "?";
 			}
@@ -582,17 +376,11 @@ namespace NetMQ.High.ClientServer
 				
 				switch (Id) 
 				{
-					case MessageId.Request:
-						Request.Read(this);
+					case MessageId.Message:
+						Message.Read(this);
 					break;
-					case MessageId.Response:
-						Response.Read(this);
-					break;
-					case MessageId.Oneway:
-						Oneway.Read(this);
-					break;
-					case MessageId.ResponseError:
-						ResponseError.Read(this);
+					case MessageId.Error:
+						Error.Read(this);
 					break;
 				default:
 					throw new MessageException("Bad message id");            					
@@ -616,17 +404,11 @@ namespace NetMQ.High.ClientServer
 			int frameSize = 2 + 1;          //  Signature and message ID
 			switch (Id) 
 			{
-				case MessageId.Request:
-					frameSize += Request.GetFrameSize();
+				case MessageId.Message:
+					frameSize += Message.GetFrameSize();
 					break;
-				case MessageId.Response:
-					frameSize += Response.GetFrameSize();
-					break;
-				case MessageId.Oneway:
-					frameSize += Oneway.GetFrameSize();
-					break;
-				case MessageId.ResponseError:
-					frameSize += ResponseError.GetFrameSize();
+				case MessageId.Error:
+					frameSize += Error.GetFrameSize();
 					break;
 			}
 
@@ -647,17 +429,11 @@ namespace NetMQ.High.ClientServer
 	
 				switch (Id) 
 				{
-					case MessageId.Request:
-						Request.Write(this);
+					case MessageId.Message:
+						Message.Write(this);
 					break;
-					case MessageId.Response:
-						Response.Write(this);
-					break;
-					case MessageId.Oneway:
-						Oneway.Write(this);
-					break;
-					case MessageId.ResponseError:
-						ResponseError.Write(this);
+					case MessageId.Error:
+						Error.Write(this);
 					break;
 				}
 
