@@ -90,8 +90,11 @@ namespace NetMQ.High.ClientServer
                     object message = m_serializer.Deserialize(m_codec.Oneway.Subject, m_codec.Oneway.Body, 0,
                         m_codec.Oneway.Body.Length);
 
+                    string service = m_codec.Request.Service;
+                    UInt64 requestId = m_codec.Request.RequestId;
+
                     // TODO: this should run on user provided task scheduler
-                    ThreadPool.QueueUserWorkItem(s => m_handler.HandleOneWay(clientId, m_codec.Oneway.RequestId, m_codec.Oneway.Service, message));
+                    ThreadPool.QueueUserWorkItem(s => m_handler.HandleOneWay(clientId, requestId, service, message));
                 }
                 else if (m_codec.Id == Codec.MessageId.Request)
                 {
@@ -109,7 +112,7 @@ namespace NetMQ.High.ClientServer
                     ThreadPool.QueueUserWorkItem(s =>
                     {
                         // we set the task scheduler so we now run on the actor thread to complete the request async
-                        m_handler.HandleRequestAsync(clientId, m_codec.Request.RequestId ,service, message).
+                        m_handler.HandleRequestAsync(clientId, requestId, service, message).
                             ContinueWith(t => CompleteRequestAsync(t, requestId, routingId), m_scheduler);
                     });
                 }
@@ -185,8 +188,11 @@ namespace NetMQ.High.ClientServer
 
         internal string GetMonitorAddress()
         {
-            m_actor.SendFrame(GetMonitorAddressCommand);
-            return m_actor.ReceiveFrameString();
+            lock (m_actor)
+            {
+                m_actor.SendFrame(GetMonitorAddressCommand);
+                return m_actor.ReceiveFrameString();
+            }            
         }
 
         public void Dispose()
