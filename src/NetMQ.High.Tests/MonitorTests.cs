@@ -14,13 +14,13 @@ namespace NetMQ.High.Tests
     {
         class ServerHandler : IServerHandler
         {
-            public async Task<object> HandleRequestAsync(UInt32 clientId, UInt64 requestId, string service, object message)
+            public async Task<object> HandleRequestAsync(UInt32 connectionId, UInt64 requestId, string service, object message)
             {
-                Console.WriteLine("{0} {1} Request received", clientId, requestId);
+                Console.WriteLine("{0} {1} Request received", connectionId, requestId);
                 return "Welcome";
             }
 
-            public void HandleOneWay(UInt32 clientId, UInt64 requestId, string service, object message)
+            public void HandleOneWay(UInt32 connectionId, UInt64 requestId, string service, object message)
             {
                 throw new NotImplementedException();
             }
