@@ -3,7 +3,7 @@ using System.Threading.Tasks;
 
 namespace NetMQ.High.ClientServer
 {
-    class OutgoingMessage
+    struct OutgoingMessage
     {
         private TaskCompletionSource<object> m_taskCompletionSource;
 
@@ -15,6 +15,8 @@ namespace NetMQ.High.ClientServer
 
             if (!oneway)
                 m_taskCompletionSource = new TaskCompletionSource<object>();
+            else
+                m_taskCompletionSource = null;
         }
 
         public static OutgoingMessage CreateOneWay(string service, object message)
