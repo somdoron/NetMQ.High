@@ -66,7 +66,7 @@ namespace NetMQ.High.ClientServer
 			}
 
 			/// <summary>
-			/// Get/Set the Service field
+			/// Get/Set the ConnectionId field
 			/// </summary>
 			public string Service
 			{
@@ -108,7 +108,7 @@ namespace NetMQ.High.ClientServer
 				//  RelatedMessageId
 				frameSize += 8;          
 
-				//  Service
+				//  ConnectionId
 				frameSize += 4;
 				if (Service != null)
 					frameSize += Service.Length;
@@ -137,7 +137,7 @@ namespace NetMQ.High.ClientServer
 				// RelatedMessageId
 				m.PutNumber8(RelatedMessageId);
 
-				// Service
+				// ConnectionId
 				if (Service != null) 						
 					m.PutLongString(Service);                						
 				else
@@ -176,7 +176,7 @@ namespace NetMQ.High.ClientServer
 				// RelatedMessageId
 				RelatedMessageId = m.GetNumber8();
 
-				// Service
+				// ConnectionId
 				Service = m.GetLongString();            
 
 				// Subject

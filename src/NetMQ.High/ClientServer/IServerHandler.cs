@@ -8,11 +8,11 @@ namespace NetMQ.High.ClientServer
         /// <summary>
         /// Handle request from a client
         /// </summary>                
-        Task<object> HandleRequestAsync(ulong messageId, uint connectionId, string service, string subject, object body);
+        Task<object> HandleRequestAsync(ulong messageId, uint connectionId, string service, object body);
 
         /// <summary>
         /// Handle oneway request from client
         /// </summary>        
-        void HandleOneWay(ulong messageId, uint connectionId, string service, string subject, object body);
+        void HandleOneWay(ulong messageId, uint connectionId, string service, object body);
     }
 }

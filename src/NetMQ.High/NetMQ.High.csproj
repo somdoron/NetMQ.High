@@ -49,11 +49,14 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="ClientServer\BaseEngine.cs" />
     <Compile Include="ClientServer\Client.cs" />
     <Compile Include="ClientServer\ClientEngine.cs" />
     <Compile Include="ClientServer\Codec.cs" />
+    <Compile Include="ClientServer\ConnectionMessage.cs" />
+    <Compile Include="ClientServer\IClientHandler.cs" />
     <Compile Include="ClientServer\IServerHandler.cs" />
-    <Compile Include="ClientServer\OutgoingMessage.cs" />
+    <Compile Include="ClientServer\ServiceMessage.cs" />
     <Compile Include="ClientServer\ServerEngine.cs" />
     <Compile Include="Global.cs" />
     <Compile Include="Serializers\ISerializer.cs" />

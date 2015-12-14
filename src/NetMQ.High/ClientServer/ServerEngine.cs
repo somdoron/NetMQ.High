@@ -6,93 +6,77 @@ using NetMQ.Sockets;
 
 namespace NetMQ.High.ClientServer
 {
-    class ServerEngine : IShimHandler
+    class ServerEngine : BaseEngine
     {
         public const string BindCommand = "BIND";
-
-        private readonly ISerializer m_serializer;
+        
+        private readonly NetMQQueue<ConnectionMessage> m_outgoingQueue;
         private readonly IServerHandler m_handler;
-
-        private Poller m_poller;
-        private RouterSocket m_serverSocket;
-        private PairSocket m_shim;
-        private NetMQScheduler m_scheduler;
-        private Codec m_codec;
-
-        public ServerEngine(ISerializer serializer, IServerHandler handler)
+        
+        private RouterSocket m_serverSocket;        
+        
+        public ServerEngine(ISerializer serializer, NetMQQueue<ConnectionMessage> outgoingQueue, IServerHandler handler)
+            : base(serializer)
         {
-            m_serializer = serializer;
-            m_handler = handler;
-            m_codec = new Codec();
+            m_outgoingQueue = outgoingQueue;
+            m_handler = handler;            
         }
 
-        public void Run(PairSocket shim)
+        protected override NetMQSocket Socket
         {
-            m_poller = new Poller();
+            get
+            {
+                return m_serverSocket;                
+            }
+        }
 
+        protected override void Initialize()
+        {
             m_serverSocket = Global.Context.CreateRouterSocket();
-            m_serverSocket.ReceiveReady += OnServerReady;
-            m_poller.AddSocket(m_serverSocket);
+            m_serverSocket.ReceiveReady += OnSocketReady;
+            Poller.AddSocket(m_serverSocket);
 
-            m_shim = shim;
-            m_shim.ReceiveReady += OnShimReady;
-            m_poller.AddSocket(m_shim);
+            m_outgoingQueue.ReceiveReady += OnOutgoingQueueReady;
+            Poller.AddSocket(m_outgoingQueue);
+        }
 
-            // used to make sure continuation of tasks run on this thread
-            m_scheduler = new NetMQScheduler(Global.Context, m_poller);
-
-            m_shim.SignalOK();
-            m_poller.PollTillCancelled();
-            m_scheduler.Dispose();
+        protected override void Cleanup()
+        {            
             m_serverSocket.Dispose();
         }
 
-        private void OnShimReady(object sender, NetMQSocketEventArgs e)
+        private void OnOutgoingQueueReady(object sender, NetMQQueueEventArgs<ConnectionMessage> e)
         {
-            string command = m_shim.ReceiveFrameString();
+            var outgoingMessage = m_outgoingQueue.Dequeue();
 
+            SendMessage(outgoingMessage.TaskCompletionSource, ConvertConnectionIdToRoutingId(outgoingMessage.ConnectionId),
+                outgoingMessage.Message, string.Empty, outgoingMessage.Oneway);
+        }
+
+        protected override void OnShimCommand(string command)
+        {                   
             switch (command)
-            {
-                case NetMQActor.EndShimMessage:
-                    m_poller.Cancel();
-                    break;
+            {                
                 case BindCommand:
-                    string addresss = m_shim.ReceiveFrameString();
+                    string addresss = Shim.ReceiveFrameString();
                     m_serverSocket.Bind(addresss);
                     break;                    
             }
         }
 
-        private void OnServerReady(object sender, NetMQSocketEventArgs e)
+        protected override void HandleOneWay(byte[] routingId, ulong messageId, string service, object message)
         {
-            m_codec.Receive(m_serverSocket);
+            m_handler.HandleOneWay(messageId, ConvertRoutingIdToConnectionId(routingId), service, message);
+        }
 
-            // TODO: this should be manage with a dictionary, this is temporary hack
-            UInt32 connectionId = BitConverter.ToUInt32(m_codec.RoutingId, 1);
+        protected override Task<object> HandleRequestAsync(byte[] routingId, ulong messageId, string service, object message)
+        {
+            return m_handler.HandleRequestAsync(messageId, ConvertRoutingIdToConnectionId(routingId), service, message);
+        }
 
-            bool oneway = m_codec.Message.OneWay == 1;
-
-            object message = m_serializer.Deserialize(m_codec.Message.Subject, m_codec.Message.Body, 0, m_codec.Message.Body.Length);
-
-            ulong messageId = m_codec.Message.MessageId;
-            string service = m_codec.Message.Service;
-            string subject = m_codec.Message.Subject;
-                
-            if (oneway)
-            {                    
-                // TODO: this should run on user provided task scheduler
-                ThreadPool.QueueUserWorkItem(s => m_handler.HandleOneWay(messageId, connectionId, service, subject, message));
-            }
-            else
-            {                    
-                // TODO: this should run on user provided task scheduler
-                ThreadPool.QueueUserWorkItem(s =>
-                {
-                    // we set the task scheduler so we now run on the actor thread to complete the request async
-                    m_handler.HandleRequestAsync(messageId, connectionId, service, subject, message).
-                        ContinueWith(t => CompleteRequestAsync(t, messageId, connectionId), m_scheduler);
-                });
-            }
+        private uint ConvertRoutingIdToConnectionId(byte[] routingId)
+        {
+            return BitConverter.ToUInt32(routingId, 1);
         }
 
         private byte[] ConvertConnectionIdToRoutingId(uint connectionId)
@@ -101,38 +85,6 @@ namespace NetMQ.High.ClientServer
             Buffer.BlockCopy(BitConverter.GetBytes(connectionId), 0, routingId, 1, 4);
 
             return routingId;
-        }
-
-        private void CompleteRequestAsync(Task<Object> t, ulong originMessageId, uint originConnectionId)
-        {
-            if (t.IsFaulted)
-            {
-                // Exception, let just send an error
-                m_codec.Id = Codec.MessageId.Message;
-                m_codec.Error.RelatedMessageId = originMessageId;
-
-                m_codec.RoutingId = ConvertConnectionIdToRoutingId(originConnectionId);
-                m_codec.Send(m_serverSocket);
-            }
-            else
-            {
-                var reply = t.Result;
-
-                string subject = m_serializer.GetObjectSubject(reply);
-
-                // TODO: Zproto should support ArraySegment to improve performance            
-                var bodySegment = m_serializer.Serialize(reply);
-                byte[] body = new byte[bodySegment.Count];
-                Buffer.BlockCopy(bodySegment.Array, bodySegment.Offset, body, 0, bodySegment.Count);
-
-                m_codec.Id = Codec.MessageId.Message;
-                m_codec.Message.Subject = subject;
-                m_codec.Message.Body = body;
-                m_codec.Message.RelatedMessageId = originMessageId;
-
-                m_codec.RoutingId = ConvertConnectionIdToRoutingId(originConnectionId);
-                m_codec.Send(m_serverSocket);
-            }
-        }
+        }        
     }
 }

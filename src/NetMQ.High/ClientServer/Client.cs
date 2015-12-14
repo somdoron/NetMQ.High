@@ -8,28 +8,30 @@ namespace NetMQ.High.ClientServer
     public class Client : IDisposable
     {
         private NetMQActor m_actor;
-        private NetMQQueue<OutgoingMessage> m_outgoingQueue;
+        private NetMQQueue<ServiceMessage> m_outgoingQueue;
 
         /// <summary>
         /// Create new client
         /// </summary>
         /// <param name="serializer">Serialize to to use to serialize the message to byte array</param>
         /// <param name="address">Address of the server</param>
-        public Client(ISerializer serializer, string address)
+        /// <param name="clientHandler"></param>
+        public Client(ISerializer serializer, string address, IClientHandler clientHandler)
         {
-            m_outgoingQueue = new NetMQQueue<OutgoingMessage>(Global.Context);
-            m_actor = NetMQActor.Create(Global.Context, new ClientEngine(serializer, m_outgoingQueue, address));            
+            m_outgoingQueue = new NetMQQueue<ServiceMessage>(Global.Context);
+            m_actor = NetMQActor.Create(Global.Context, new ClientEngine(serializer, m_outgoingQueue, address, clientHandler));
         }
 
         /// <summary>
         /// Create new client with default serializer 
         /// </summary>
-        /// <param name="address">Address of the server</param>       
-        public Client(string address) : this(Global.DefaultSerializer, address)
+        /// <param name="address">Address of the server</param>
+        /// <param name="clientHandler"></param>       
+        public Client(string address, IClientHandler clientHandler) : this(Global.DefaultSerializer, address, clientHandler)
         {
-            
+
         }
-        
+
         /// <summary>
         /// Send a request to the server and return the reply
         /// </summary>
@@ -38,12 +40,12 @@ namespace NetMQ.High.ClientServer
         /// <returns>Reply from server</returns>
         public Task<object> SendRequestAsync(string service, object message)
         {
-            var outgoingMessage = OutgoingMessage.Create(service, message);
+            var outgoingMessage = new ServiceMessage(new TaskCompletionSource<object>(), service, message, false);
 
             // NetMQQueue is thread safe, so no need to lock
             m_outgoingQueue.Enqueue(outgoingMessage);
 
-            return outgoingMessage.Task;
+            return outgoingMessage.TaskCompletionSource.Task;
         }
 
         /// <summary>
@@ -54,7 +56,7 @@ namespace NetMQ.High.ClientServer
         public void SendOneWay(string service, object message)
         {
             // NetMQQueue is thread safe, so no need to lock
-            m_outgoingQueue.Enqueue(OutgoingMessage.CreateOneWay(service, message));
+            m_outgoingQueue.Enqueue(new ServiceMessage(null, service, message, true));
         }
 
         public void Dispose()
