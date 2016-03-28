@@ -19,9 +19,8 @@ using System.Collections.Generic;
 using System.Text;
 using NetMQ;
 using NetMQ.Sockets;
-using NetMQ.zmq;
 
-namespace NetMQ.High.ClientServer
+namespace NetMQ.High
 {
 	/// <summary>
 	/// Client Server protocol
@@ -38,7 +37,8 @@ namespace NetMQ.High.ClientServer
 		public enum MessageId
 		{
 			Message = 1,
-			Error = 2,
+			ServiceRegister = 2,
+			Error = 3,
 		}
 		
 		#region Message
@@ -66,7 +66,7 @@ namespace NetMQ.High.ClientServer
 			}
 
 			/// <summary>
-			/// Get/Set the ConnectionId field
+			/// Get/Set the Service field
 			/// </summary>
 			public string Service
 			{
@@ -97,6 +97,14 @@ namespace NetMQ.High.ClientServer
 				get;set;
 			}
 
+			/// <summary>
+			/// Get/Set the ConnectionId field
+			/// </summary>
+			public UInt32 ConnectionId
+			{
+				get;set;
+			}
+
 
 			internal int GetFrameSize()
 			{
@@ -108,7 +116,7 @@ namespace NetMQ.High.ClientServer
 				//  RelatedMessageId
 				frameSize += 8;          
 
-				//  ConnectionId
+				//  Service
 				frameSize += 4;
 				if (Service != null)
 					frameSize += Service.Length;
@@ -126,6 +134,9 @@ namespace NetMQ.High.ClientServer
 				//  OneWay
 				frameSize += 1;          
 
+				//  ConnectionId
+				frameSize += 4;          
+
 				return frameSize;
 			}		
 
@@ -137,7 +148,7 @@ namespace NetMQ.High.ClientServer
 				// RelatedMessageId
 				m.PutNumber8(RelatedMessageId);
 
-				// ConnectionId
+				// Service
 				if (Service != null) 						
 					m.PutLongString(Service);                						
 				else
@@ -161,6 +172,9 @@ namespace NetMQ.High.ClientServer
 				// OneWay
 				m.PutNumber1(OneWay);
 
+				// ConnectionId
+				m.PutNumber4(ConnectionId);
+
 			}
 
 			internal void Read(Codec m)
@@ -176,7 +190,7 @@ namespace NetMQ.High.ClientServer
 				// RelatedMessageId
 				RelatedMessageId = m.GetNumber8();
 
-				// ConnectionId
+				// Service
 				Service = m.GetLongString();            
 
 				// Subject
@@ -194,6 +208,63 @@ namespace NetMQ.High.ClientServer
 
 				// OneWay
 				OneWay = m.GetNumber1();
+
+				// ConnectionId
+				ConnectionId = m.GetNumber4();
+
+			}
+		}
+
+		#endregion
+
+		#region ServiceRegister
+
+		public class ServiceRegisterMessage
+		{
+			public ServiceRegisterMessage()
+			{
+			}			
+
+			/// <summary>
+			/// Get/Set the Service field
+			/// </summary>
+			public string Service
+			{
+				get;set;
+			}
+
+
+			internal int GetFrameSize()
+			{
+				int frameSize = 0;
+
+				//  Service
+				frameSize += 4;
+				if (Service != null)
+					frameSize += Service.Length;
+
+				return frameSize;
+			}		
+
+			internal void Write(Codec m)
+			{
+				// Service
+				if (Service != null) 						
+					m.PutLongString(Service);                						
+				else
+					m.PutNumber4(0);    //  Empty string
+
+			}
+
+			internal void Read(Codec m)
+			{
+				int listSize;
+				int hashSize;
+				int chunkSize;
+				byte[] guidBytes;
+
+				// Service
+				Service = m.GetLongString();            
 
 			}
 		}
@@ -216,6 +287,14 @@ namespace NetMQ.High.ClientServer
 				get;set;
 			}
 
+			/// <summary>
+			/// Get/Set the ConnectionId field
+			/// </summary>
+			public UInt32 ConnectionId
+			{
+				get;set;
+			}
+
 
 			internal int GetFrameSize()
 			{
@@ -224,6 +303,9 @@ namespace NetMQ.High.ClientServer
 				//  RelatedMessageId
 				frameSize += 8;          
 
+				//  ConnectionId
+				frameSize += 4;          
+
 				return frameSize;
 			}		
 
@@ -231,6 +313,9 @@ namespace NetMQ.High.ClientServer
 			{
 				// RelatedMessageId
 				m.PutNumber8(RelatedMessageId);
+
+				// ConnectionId
+				m.PutNumber4(ConnectionId);
 
 			}
 
@@ -243,6 +328,9 @@ namespace NetMQ.High.ClientServer
 
 				// RelatedMessageId
 				RelatedMessageId = m.GetNumber8();
+
+				// ConnectionId
+				ConnectionId = m.GetNumber4();
 
 			}
 		}
@@ -260,10 +348,13 @@ namespace NetMQ.High.ClientServer
 		public Codec()
 		{    
 			Message = new MessageMessage();
+			ServiceRegister = new ServiceRegisterMessage();
 			Error = new ErrorMessage();
 		}			
 
 		public MessageMessage Message {get;private set;}
+
+		public ServiceRegisterMessage ServiceRegister {get;private set;}
 
 		public ErrorMessage Error {get;private set;}
 
@@ -310,6 +401,8 @@ namespace NetMQ.High.ClientServer
 				{
 					case MessageId.Message:
 						return "Message";										
+					case MessageId.ServiceRegister:
+						return "ServiceRegister";										
 					case MessageId.Error:
 						return "Error";										
 				}
@@ -379,6 +472,9 @@ namespace NetMQ.High.ClientServer
 					case MessageId.Message:
 						Message.Read(this);
 					break;
+					case MessageId.ServiceRegister:
+						ServiceRegister.Read(this);
+					break;
 					case MessageId.Error:
 						Error.Read(this);
 					break;
@@ -407,6 +503,9 @@ namespace NetMQ.High.ClientServer
 				case MessageId.Message:
 					frameSize += Message.GetFrameSize();
 					break;
+				case MessageId.ServiceRegister:
+					frameSize += ServiceRegister.GetFrameSize();
+					break;
 				case MessageId.Error:
 					frameSize += Error.GetFrameSize();
 					break;
@@ -431,6 +530,9 @@ namespace NetMQ.High.ClientServer
 				{
 					case MessageId.Message:
 						Message.Write(this);
+					break;
+					case MessageId.ServiceRegister:
+						ServiceRegister.Write(this);
 					break;
 					case MessageId.Error:
 						Error.Write(this);

@@ -10,12 +10,9 @@ namespace NetMQ.High
     public class Global
     {
         static Global()
-        {
-            Context = NetMQContext.Create();
+        {           
             DefaultSerializer = new BinarySerializer();
-        }
-
-        internal static NetMQContext Context { get; }
+        }        
 
         public static ISerializer DefaultSerializer { get; set; }
     }

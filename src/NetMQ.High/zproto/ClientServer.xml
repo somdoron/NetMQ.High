@@ -4,9 +4,9 @@
     signature = "0"
     title = "Client Server protocol"
     script = "zproto_codec_cs"
-    source_dir = "./../ClientServer/"
+    source_dir = "./../Engines"
     test_dir ="./../../NetMQ.High.Tests"
-    namespace ="NetMQ.High.ClientServer"
+    namespace ="NetMQ.High"
     test_namespace="NetMQ.High.Tests"
     modifier="internal"
     >
@@ -18,9 +18,15 @@
     <field name="subject" type="longstr">Subject of the message</field>
     <field name="body" type="chunk">Body of the message</field>
     <field name="one_way" type="number" size="1">Is the message one way?</field>
-  </message>  
+    <field name="connection_id" type="number" size="4">Id of the connection this message should be route to, only between load balancer and worker</field>
+  </message>
+
+  <message name="SERVICE_REGISTER">
+    <field name="service" type="longstr">Name of the service the worker register to</field>
+  </message> 
 
   <message name="ERROR">
     <field name="related_message_id" type="number" size="8">Identifier of the message causing the error</field>
+    <field name="connection_id" type="number" size="4">Id of the connection this message should be route to, only between load balancer and worker</field>
   </message>
 </class>

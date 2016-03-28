@@ -4,7 +4,6 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using NetMQ.High.ClientServer;
 using NUnit.Framework;
 
 namespace NetMQ.High.Tests
@@ -12,9 +11,9 @@ namespace NetMQ.High.Tests
     [TestFixture]
     class ClientServerTests
     {        
-        class ServerHandler : IServerHandler
+        class Handler : IAsyncHandler
         {            
-            public ServerHandler()
+            public Handler()
             {                
             }
 
@@ -30,40 +29,22 @@ namespace NetMQ.High.Tests
             }
 
             public uint ConnectionId { get; private set; }
-        }
-
-        class ClientHandler : IClientHandler
-        {
-            public async Task<object> HandleRequestAsync(ulong messageId, object body)
-            {
-                return "Yes";
-            }
-
-            public void HandleOneWay(ulong messageId, object body)
-            {
-                throw new NotImplementedException();
-            }
-        }
+        }     
 
         [Test]
         public void RequestResponse()
         {
             int i = 0;
 
-            var serverHandler = new ServerHandler();
-            using (Server server = new Server(serverHandler))
+            var serverHandler = new Handler();
+            using (AsyncServer server = new AsyncServer(serverHandler))
             {
                 server.Bind("tcp://*:6666");
-                using (Client client = new Client("tcp://localhost:6666", new ClientHandler()))
+                using (Client client = new Client("tcp://localhost:6666"))
                 {
                     // client to server
                     var reply = (string) client.SendRequestAsync("Hello", "World").Result;
-                    Assert.That(reply == "Welcome");
-
-                    // server to client
-                    reply = (string) server.SendRequestAsync(serverHandler.ConnectionId, "Are you alive?").Result;
-
-                    Assert.That(reply == "Yes");
+                    Assert.That(reply == "Welcome");                    
                 }
             }    
         }

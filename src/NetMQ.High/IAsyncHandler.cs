@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Threading.Tasks;
 
-namespace NetMQ.High.ClientServer
+namespace NetMQ.High
 {
-    public interface IServerHandler
+    public interface IAsyncHandler
     {
         /// <summary>
         /// Handle request from a client
